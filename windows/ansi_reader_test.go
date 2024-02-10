@@ -6,8 +6,8 @@ package windowsconsole
 import (
 	"testing"
 
-	"github.com/Azure/go-ansiterm"
-	"github.com/Azure/go-ansiterm/winterm"
+	"github.com/abakum/go-ansiterm"
+	"github.com/abakum/go-ansiterm/winterm"
 )
 
 func TestKeyToString(t *testing.T) {

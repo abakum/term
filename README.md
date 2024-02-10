@@ -1,6 +1,6 @@
 # term - utilities for dealing with terminals
 
-![Test](https://github.com/moby/term/workflows/Test/badge.svg) [![GoDoc](https://godoc.org/github.com/moby/term?status.svg)](https://godoc.org/github.com/moby/term) [![Go Report Card](https://goreportcard.com/badge/github.com/moby/term)](https://goreportcard.com/report/github.com/moby/term)
+![Test](https://github.com/abakum/term/workflows/Test/badge.svg) [![GoDoc](https://godoc.org/github.com/abakum/term?status.svg)](https://godoc.org/github.com/abakum/term) [![Go Report Card](https://goreportcard.com/badge/github.com/abakum/term)](https://goreportcard.com/report/github.com/abakum/term)
 
 term provides structures and helper functions to work with terminal (state, sizes).
 
@@ -13,7 +13,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/moby/term"
+	"github.com/abakum/term"
 )
 
 func main() {
