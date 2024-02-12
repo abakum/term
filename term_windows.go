@@ -264,6 +264,10 @@ func NewIOE() (s *IOE) {
 	return
 }
 
+func (s *IOE) ReadCloser() io.ReadCloser {
+	return s.rc
+}
+
 func (s *IOE) Close() {
 	if s == nil {
 		return
