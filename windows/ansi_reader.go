@@ -14,6 +14,7 @@ import (
 
 	"github.com/abakum/go-ansiterm"
 	"github.com/abakum/go-ansiterm/winterm"
+	"golang.org/x/sys/windows"
 )
 
 const (
@@ -22,23 +23,56 @@ const (
 
 // ansiReader wraps a standard input file (e.g., os.Stdin) providing ANSI sequence translation.
 type ansiReader struct {
-	file     *os.File
-	fd       uintptr
-	buffer   []byte
-	cbBuffer int
-	command  []byte
+	file    *os.File
+	fd      uintptr
+	buffer  []byte
+	command []byte
 }
 
 // NewAnsiReader returns an io.ReadCloser that provides VT100 terminal emulation on top of a
 // Windows console input handle.
 func NewAnsiReader(nFile int) io.ReadCloser {
-	file, fd := winterm.GetStdFile(nFile)
+	file, _ := winterm.GetStdFile(nFile)
+	return NewAnsiReaderFile(file)
+}
+
+// NewAnsiReaderFile returns an io.ReadCloser that provides VT100 terminal emulation on top of `src`
+func NewAnsiReaderFile(src *os.File) io.ReadCloser {
 	return &ansiReader{
-		file:    file,
-		fd:      fd,
+		file:    src,
+		fd:      src.Fd(),
 		command: make([]byte, 0, ansiterm.ANSI_MAX_CMD_LENGTH),
 		buffer:  make([]byte, 0),
 	}
+}
+
+// NewAnsiReaderDuplicate returns an io.ReadCloser that provides VT100 terminal emulation on top of a duplicate of `src`
+//
+// stdin, err:=NewAnsiReaderDuplicate(os.Stdin)
+//
+//	if err!=nil{
+//		return err
+//	}
+//
+// defer stdin.Close()
+func NewAnsiReaderDuplicate(src *os.File) (io.ReadCloser, error) {
+	duplicate, err := DuplicateFile(src)
+	if err != nil {
+		return nil, err
+	}
+	return NewAnsiReaderFile(duplicate), nil
+}
+
+// DuplicateFile create and return file `trg` as duplicate of `src`
+// for `defer trg.Close()` even for os.Stdin
+func DuplicateFile(src *os.File) (trg *os.File, err error) {
+	var h windows.Handle
+	p := windows.CurrentProcess()
+	if err := windows.DuplicateHandle(p, windows.Handle(src.Fd()), p, &h, 0, false, windows.DUPLICATE_SAME_ACCESS); err != nil {
+		return nil, err
+	}
+
+	return os.NewFile(uintptr(h), src.Name()), nil
 }
 
 // Close closes the wrapped file.
@@ -219,9 +253,9 @@ func formatVirtualKey(key uint16, controlState uint32, escapeSequence []byte) st
 
 // getControlKeys extracts the shift, alt, and ctrl key states.
 func getControlKeys(controlState uint32) (shift, alt, control bool) {
-	shift = 0 != (controlState & winterm.SHIFT_PRESSED)
-	alt = 0 != (controlState & (winterm.LEFT_ALT_PRESSED | winterm.RIGHT_ALT_PRESSED))
-	control = 0 != (controlState & (winterm.LEFT_CTRL_PRESSED | winterm.RIGHT_CTRL_PRESSED))
+	shift = (controlState & winterm.SHIFT_PRESSED) != 0
+	alt = (controlState & (winterm.LEFT_ALT_PRESSED | winterm.RIGHT_ALT_PRESSED)) != 0
+	control = (controlState & (winterm.LEFT_CTRL_PRESSED | winterm.RIGHT_CTRL_PRESSED)) != 0
 	return shift, alt, control
 }
 

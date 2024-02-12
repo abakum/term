@@ -1,6 +1,7 @@
 package term
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -169,8 +170,123 @@ func restoreAtInterrupt(fd uintptr, state *State) {
 	signal.Notify(sigchan, os.Interrupt)
 
 	go func() {
-		_ = <-sigchan
-		_ = RestoreTerminal(fd, state)
+		<-sigchan
+		RestoreTerminal(fd, state)
 		os.Exit(0)
 	}()
+}
+
+func AllowVTI() (ok bool, err error) {
+	src := os.Stdin
+	var (
+		mode uint32
+	)
+	fd := windows.Handle(src.Fd())
+	if err := windows.GetConsoleMode(fd, &mode); err == nil {
+		// isConsole
+		// Validate that winterm.ENABLE_VIRTUAL_TERMINAL_INPUT is supported, but do not set it.
+		ok = windows.SetConsoleMode(fd, mode|windows.ENABLE_VIRTUAL_TERMINAL_INPUT) == nil
+		// Unconditionally set the console mode back even on failure because SetConsoleMode
+		// remembers invalid bits on input handles.
+		_ = windows.SetConsoleMode(fd, mode)
+	}
+	return
+}
+
+var ErrWin10 = errors.New("no need emulate")
+
+func StdOE(src *os.File) (io.Writer, *os.File, error) {
+	var (
+		mode    uint32
+		emulate bool
+	)
+
+	fd := windows.Handle(src.Fd())
+	if err := windows.GetConsoleMode(fd, &mode); err == nil {
+		// Validate winterm.DISABLE_NEWLINE_AUTO_RETURN is supported, but do not set it.
+		if err = windows.SetConsoleMode(fd, mode|windows.ENABLE_VIRTUAL_TERMINAL_PROCESSING|windows.DISABLE_NEWLINE_AUTO_RETURN); err != nil {
+			emulate = true
+		} else {
+			_ = windows.SetConsoleMode(fd, mode|windows.ENABLE_VIRTUAL_TERMINAL_PROCESSING)
+		}
+	}
+
+	if emulate {
+		return windowsconsole.NewAnsiWriterFileDuplicate(src)
+	}
+	return nil, nil, ErrWin10
+}
+
+func AllowVTP(src *os.File) (ok bool, err error) {
+	var (
+		mode uint32
+	)
+	if src == nil {
+		src = os.Stdout
+	}
+	fd := windows.Handle(src.Fd())
+	err = windows.GetConsoleMode(fd, &mode)
+	if err == nil {
+		// isConsole
+		ok = windows.SetConsoleMode(fd, mode|windows.ENABLE_VIRTUAL_TERMINAL_PROCESSING|windows.DISABLE_NEWLINE_AUTO_RETURN) == nil
+		_ = windows.SetConsoleMode(fd, mode)
+	}
+	return
+}
+
+func EnableVTP() (ok bool) {
+	var (
+		mode uint32
+	)
+	fd := windows.Handle(os.Stdout.Fd())
+	if err := windows.GetConsoleMode(fd, &mode); err == nil {
+		// isConsole
+		ok = windows.SetConsoleMode(fd, mode|windows.ENABLE_VIRTUAL_TERMINAL_PROCESSING) == nil
+	}
+	return
+}
+
+type IOE struct {
+	i, o, e *State
+	rc      io.ReadCloser
+}
+
+func NewIOE() (s *IOE) {
+	s = &IOE{}
+
+	stdStreams()
+	s.i, _ = setRawTerminal(os.Stdin.Fd())
+	s.o, _ = setRawTerminalOutput(os.Stdout.Fd())
+	s.e, _ = setRawTerminalOutput(os.Stderr.Fd())
+	// for Win10 no need emulation VTP but need close dublicate of os.Stdin
+	// to unblock input after return
+	s.rc, _ = windowsconsole.NewAnsiReaderDuplicate(os.Stdin)
+	return
+}
+
+func (s *IOE) Close() {
+	if s == nil {
+		return
+	}
+	if s.rc != nil {
+		if s.rc.Close() == nil {
+			s.rc = nil
+		}
+	}
+	if s.e != nil {
+		if restoreTerminal(os.Stderr.Fd(), s.e) == nil {
+			s.e = nil
+		}
+	}
+	if s.o != nil {
+		if restoreTerminal(os.Stdout.Fd(), s.o) == nil {
+			s.o = nil
+		}
+	}
+	if s.i != nil {
+		if restoreTerminal(os.Stdin.Fd(), s.i) == nil {
+			s.i = nil
+		}
+	}
+	s = nil
 }
