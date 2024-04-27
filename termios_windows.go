@@ -1,3 +1,6 @@
+//go:build windows
+// +build windows
+
 package term
 
 import "golang.org/x/sys/windows"

@@ -1,3 +1,6 @@
+//go:build windows
+// +build windows
+
 package term
 
 import (
@@ -103,7 +106,7 @@ func getWinsize(fd uintptr) (*Winsize, error) {
 	return winsize, nil
 }
 
-func setWinsize(fd uintptr, ws *Winsize) error {
+func setWinsize(_ uintptr, _ *Winsize) error {
 	return fmt.Errorf("not implemented on Windows")
 }
 

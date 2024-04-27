@@ -14,7 +14,7 @@ import (
 // ErrInvalidState is returned if the state of the terminal is invalid.
 //
 // Deprecated: ErrInvalidState is no longer used.
-var ErrInvalidState = errors.New("Invalid terminal state")
+var ErrInvalidState = errors.New("invalid terminal state")
 
 // terminalState holds the platform-specific state / console mode for the terminal.
 type terminalState struct {
@@ -81,7 +81,7 @@ func setRawTerminal(fd uintptr) (*State, error) {
 	return makeRaw(fd)
 }
 
-func setRawTerminalOutput(fd uintptr) (*State, error) {
+func setRawTerminalOutput(_ uintptr) (*State, error) {
 	return nil, nil
 }
 
@@ -95,4 +95,51 @@ func tcget(fd uintptr) (*unix.Termios, error) {
 
 func tcset(fd uintptr, p *unix.Termios) error {
 	return unix.IoctlSetTermios(int(fd), setTermios, p)
+}
+
+type IOE struct {
+	i, o, e *State
+	rc      io.ReadCloser
+}
+
+func NewIOE() (s *IOE) {
+	s = &IOE{}
+
+	stdStreams()
+	s.i, _ = setRawTerminal(os.Stdin.Fd())
+	s.o, _ = setRawTerminalOutput(os.Stdout.Fd())
+	s.e, _ = setRawTerminalOutput(os.Stderr.Fd())
+	s.rc = os.Stdin
+	return
+}
+
+func (s *IOE) ReadCloser() io.ReadCloser {
+	return s.rc
+}
+
+func (s *IOE) Close() {
+	if s == nil {
+		return
+	}
+	// if s.rc != nil {
+	// 	if s.rc.Close() == nil {
+	// 		s.rc = nil
+	// 	}
+	// }
+	if s.e != nil {
+		if restoreTerminal(os.Stderr.Fd(), s.e) == nil {
+			s.e = nil
+		}
+	}
+	if s.o != nil {
+		if restoreTerminal(os.Stdout.Fd(), s.o) == nil {
+			s.o = nil
+		}
+	}
+	if s.i != nil {
+		if restoreTerminal(os.Stdin.Fd(), s.i) == nil {
+			s.i = nil
+		}
+	}
+	s = nil
 }
